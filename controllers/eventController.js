@@ -1,52 +1,48 @@
-const { ObjectId } = require("mongodb");
-const connectDB = require("../utils/db");
+const Event = require("../models/eventModel");
 
-const getEvents = async (req, res) => {
+// Get all events
+const getAllEvents = async (req, res) => {
   try {
-    const db = await connectDB();
-    const events = await db.collection("events").find({}).toArray();
+    const events = await Event.find();
     res.status(200).json(events);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch events", error });
+    res.status(500).json({ error: error.message });
   }
 };
 
+// Create a new event
 const createEvent = async (req, res) => {
   try {
-    const db = await connectDB();
-    const event = req.body; // Expecting the event data in the request body
-    const result = await db.collection("events").insertOne(event);
-    res.status(201).json(result);
+    const { year, name, images } = req.body;
+    const newEvent = await Event.create({ year, name, images });
+    res.status(201).json(newEvent);
   } catch (error) {
-    res.status(500).json({ message: "Failed to create event", error });
+    res.status(500).json({ error: error.message });
   }
 };
 
+// Update an event
 const updateEvent = async (req, res) => {
   try {
-    const db = await connectDB();
-    const id = req.params.id;
-    const updatedData = req.body;
-    const result = await db
-      .collection("events")
-      .updateOne({ _id: new ObjectId(id) }, { $set: updatedData });
-    res.status(200).json(result);
+    const { id } = req.params;
+    const updatedEvent = await Event.findByIdAndUpdate(id, req.body, {
+      new: true,
+    });
+    res.status(200).json(updatedEvent);
   } catch (error) {
-    res.status(500).json({ message: "Failed to update event", error });
+    res.status(500).json({ error: error.message });
   }
 };
 
+// Delete an event
 const deleteEvent = async (req, res) => {
   try {
-    const db = await connectDB();
-    const id = req.params.id;
-    const result = await db
-      .collection("events")
-      .deleteOne({ _id: new ObjectId(id) });
-    res.status(200).json(result);
+    const { id } = req.params;
+    await Event.findByIdAndDelete(id);
+    res.status(200).json({ message: "Event deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete event", error });
+    res.status(500).json({ error: error.message });
   }
 };
 
-module.exports = { getEvents, createEvent, updateEvent, deleteEvent };
+module.exports = { getAllEvents, createEvent, updateEvent, deleteEvent };

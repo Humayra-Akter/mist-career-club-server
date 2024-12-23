@@ -17,10 +17,14 @@ app.use(express.json());
 
 // Routes
 const eventRoutes = require("./routes/eventRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
 app.use("/api/events", eventRoutes);
+app.use("/api/uploads", uploadRoutes);
+
 app.get("/", (req, res) => {
   res.send("Running from server");
 });
+
 // Start the server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
