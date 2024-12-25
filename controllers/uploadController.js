@@ -1,6 +1,6 @@
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary");
+const { v4: uuidv4 } = require("uuid");
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -8,22 +8,27 @@ cloudinary.config({
   api_secret: process.env.API_SECRET,
 });
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "mist-career-club",
-  },
-});
+const storage = multer.memoryStorage(); // Store images in memory
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
 const uploadImage = async (req, res) => {
   try {
     const file = req.file;
-    res.status(200).json({
-      message: "Image uploaded successfully",
-      fileUrl: file.path,
-    });
+    const result = await cloudinary.uploader.upload_stream(
+      { public_id: uuidv4() },
+      (error, result) => {
+        if (error) {
+          res.status(500).json({ error: error.message });
+        } else {
+          res.status(200).json({
+            message: "Image uploaded successfully",
+            fileUrl: result.secure_url,
+          });
+        }
+      }
+    );
+    file.stream.pipe(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
