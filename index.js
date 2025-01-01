@@ -76,46 +76,62 @@ async function run() {
       }
     });
 
-    // Update an event by ID
-   app.put("/event/:id", upload.array("images", 10), async (req, res) => {
-     try {
-       const { id } = req.params;
-       const { title, date, description, existingImages } = req.body;
+    app.put("/event/:id", upload.array("images", 10), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { title, date, description, existingImages } = req.body;
 
-       // Parse the existing images (if provided as a JSON string)
-       const existingImagesArray = existingImages
-         ? JSON.parse(existingImages)
-         : [];
+        // Parse the existing images (if provided as a JSON string)
+        const existingImagesArray = existingImages
+          ? JSON.parse(existingImages)
+          : [];
 
-       // Collect new image URLs (if any)
-       const newImages = req.files ? req.files.map((file) => file.path) : [];
+        // Collect new image URLs (if any)
+        const newImages = req.files ? req.files.map((file) => file.path) : [];
 
-       // Combine existing and new images
-       const updatedImages = [...existingImagesArray, ...newImages];
+        // Identify images to delete
+        const event = await eventCollection.findOne({ _id: new ObjectId(id) });
+        if (!event) {
+          return res.status(404).json({ message: "Event not found" });
+        }
 
-       const updateFields = {
-         title,
-         date,
-         description,
-         images: updatedImages,
-       };
+        const imagesToDelete = event.images.filter(
+          (img) => !existingImagesArray.includes(img)
+        );
 
-       const result = await eventCollection.updateOne(
-         { _id: new ObjectId(id) },
-         { $set: updateFields }
-       );
+        // Remove images from Cloudinary
+        for (const image of imagesToDelete) {
+          const publicId = image.split("/").pop().split(".")[0]; // Extract Cloudinary public ID
+          await cloudinary.uploader.destroy(
+            `mist-career-club/events/${publicId}`
+          );
+        }
 
-       if (result.matchedCount > 0) {
-         res.json({ message: "Event updated successfully" });
-       } else {
-         res.status(404).json({ message: "Event not found" });
-       }
-     } catch (error) {
-       console.error("Error updating event:", error);
-       res.status(500).json({ message: "Failed to update event" });
-     }
-   });
+        // Combine existing and new images
+        const updatedImages = [...existingImagesArray, ...newImages];
 
+        const updateFields = {
+          title,
+          date,
+          description,
+          images: updatedImages,
+        };
+
+        const result = await eventCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateFields }
+        );
+
+        if (result.matchedCount > 0) {
+          res.json({ message: "Event updated successfully" });
+        } else {
+          res.status(404).json({ message: "Event not found" });
+        }
+      } catch (error) {
+        console.error("Error updating event:", error);
+        res.status(500).json({ message: "Failed to update event" });
+      }
+    });
 
     // Delete an event by ID
     app.delete("/event/:id", async (req, res) => {
