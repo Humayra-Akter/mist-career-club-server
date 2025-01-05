@@ -39,6 +39,9 @@ async function run() {
     await client.connect();
     console.log("Connected to MongoDB");
     const eventCollection = client.db("mist-career-club").collection("event");
+    const directorCollection = client
+      .db("mist-career-club")
+      .collection("director");
 
     // Fetch all events
     app.get("/event", async (req, res) => {
@@ -150,6 +153,126 @@ async function run() {
       } catch (error) {
         console.error("Error deleting event:", error);
         res.status(500).json({ message: "Failed to delete event" });
+      }
+    });
+
+    // Fetch all directors
+    app.get("/director", async (req, res) => {
+      try {
+        const directors = await directorCollection.find({}).toArray();
+        res.json(directors);
+      } catch (error) {
+        console.error("Error fetching directors:", error);
+        res.status(500).json({ message: "Failed to fetch directors" });
+      }
+    });
+
+    // Add a new director
+    app.post("/director", upload.single("image"), async (req, res) => {
+      try {
+        const { name, department, segment, year, term } = req.body;
+        const image = req.file ? req.file.path : null;
+
+        if (!image) {
+          return res.status(400).json({ message: "Image is required" });
+        }
+
+        const director = { name, department, segment, year, term, image };
+        const result = await directorCollection.insertOne(director);
+
+        if (result.insertedId) {
+          res.status(201).json({
+            message: "Director added successfully",
+            directorId: result.insertedId,
+          });
+        } else {
+          res.status(500).json({ message: "Failed to add director" });
+        }
+      } catch (error) {
+        console.error("Error adding director:", error);
+        res
+          .status(500)
+          .json({ message: "An error occurred while adding director" });
+      }
+    });
+
+    // Update a director
+    app.put("/director/:id", upload.single("image"), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { name, department, segment, year, term } = req.body;
+
+        const existingDirector = await directorCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!existingDirector) {
+          return res.status(404).json({ message: "Director not found" });
+        }
+
+        let updatedImage = existingDirector.image; // Retain existing image if no new image is provided
+        if (req.file) {
+          // Remove old image from Cloudinary if new image is provided
+          const publicId = existingDirector.image
+            .split("/")
+            .pop()
+            .split(".")[0];
+          await cloudinary.uploader.destroy(publicId);
+          updatedImage = req.file.path;
+        }
+
+        const updatedDirector = {
+          name,
+          department,
+          segment,
+          year,
+          term,
+          image: updatedImage,
+        };
+
+        const result = await directorCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedDirector }
+        );
+
+        if (result.matchedCount > 0) {
+          res.json({ message: "Director updated successfully" });
+        } else {
+          res.status(404).json({ message: "Director not found" });
+        }
+      } catch (error) {
+        console.error("Error updating director:", error);
+        res.status(500).json({ message: "Failed to update director" });
+      }
+    });
+
+    // Delete a director
+    app.delete("/director/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const director = await directorCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!director) {
+          return res.status(404).json({ message: "Director not found" });
+        }
+
+        // Remove image from Cloudinary
+        const publicId = director.image.split("/").pop().split(".")[0];
+        await cloudinary.uploader.destroy(publicId);
+
+        const result = await directorCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount > 0) {
+          res.json({ message: "Director deleted successfully" });
+        } else {
+          res.status(404).json({ message: "Director not found" });
+        }
+      } catch (error) {
+        console.error("Error deleting director:", error);
+        res.status(500).json({ message: "Failed to delete director" });
       }
     });
 
