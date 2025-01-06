@@ -39,6 +39,9 @@ async function run() {
     await client.connect();
     console.log("Connected to MongoDB");
     const eventCollection = client.db("mist-career-club").collection("event");
+    const executiveCollection = client
+      .db("mist-career-club")
+      .collection("executive");
     const directorCollection = client
       .db("mist-career-club")
       .collection("director");
@@ -195,53 +198,62 @@ async function run() {
           .json({ message: "An error occurred while adding director" });
       }
     });
-
-    // Update a director
-    app.put("/director/:id", upload.single("image"), async (req, res) => {
+    // Add a new director
+    app.post("/director", upload.single("image"), async (req, res) => {
       try {
-        const { id } = req.params;
         const { name, department, segment, year, term } = req.body;
+        const image = req.file ? req.file.path : null;
 
-        const existingDirector = await directorCollection.findOne({
-          _id: new ObjectId(id),
-        });
-        if (!existingDirector) {
-          return res.status(404).json({ message: "Director not found" });
+        if (!image) {
+          return res.status(400).json({ message: "Image is required" });
         }
 
-        let updatedImage = existingDirector.image; // Retain existing image if no new image is provided
-        if (req.file) {
-          // Remove old image from Cloudinary if new image is provided
-          const publicId = existingDirector.image
-            .split("/")
-            .pop()
-            .split(".")[0];
-          await cloudinary.uploader.destroy(publicId);
-          updatedImage = req.file.path;
-        }
+        const director = { name, department, segment, year, term, image };
+        const result = await directorCollection.insertOne(director);
 
-        const updatedDirector = {
-          name,
-          department,
-          segment,
-          year,
-          term,
-          image: updatedImage,
-        };
-
-        const result = await directorCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updatedDirector }
-        );
-
-        if (result.matchedCount > 0) {
-          res.json({ message: "Director updated successfully" });
+        if (result.insertedId) {
+          res.status(201).json({
+            message: "Director added successfully",
+            directorId: result.insertedId,
+          });
         } else {
-          res.status(404).json({ message: "Director not found" });
+          res.status(500).json({ message: "Failed to add director" });
         }
       } catch (error) {
-        console.error("Error updating director:", error);
-        res.status(500).json({ message: "Failed to update director" });
+        console.error("Error adding director:", error);
+        res
+          .status(500)
+          .json({ message: "An error occurred while adding director" });
+      }
+    }); 
+    
+    
+    // Add a new executive
+    app.post("/executive", upload.single("image"), async (req, res) => {
+      try {
+        const { name, department, segment, year, term } = req.body;
+        const image = req.file ? req.file.path : null;
+
+        if (!image) {
+          return res.status(400).json({ message: "Image is required" });
+        }
+
+        const executive = { name, department, segment, year, term, image };
+        const result = await executiveCollection.insertOne(executive);
+
+        if (result.insertedId) {
+          res.status(201).json({
+            message: "executive added successfully",
+            executiveId: result.insertedId,
+          });
+        } else {
+          res.status(500).json({ message: "Failed to add executive" });
+        }
+      } catch (error) {
+        console.error("Error adding executive:", error);
+        res
+          .status(500)
+          .json({ message: "An error occurred while adding executive" });
       }
     });
 
