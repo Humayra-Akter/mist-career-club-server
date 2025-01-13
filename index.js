@@ -39,6 +39,9 @@ async function run() {
     await client.connect();
     console.log("Connected to MongoDB");
     const eventCollection = client.db("mist-career-club").collection("event");
+    const associativeCollection = client
+      .db("mist-career-club")
+      .collection("associative");
     const executiveCollection = client
       .db("mist-career-club")
       .collection("executive");
@@ -225,36 +228,6 @@ async function run() {
           .status(500)
           .json({ message: "An error occurred while adding director" });
       }
-    }); 
-    
-    
-    // Add a new executive
-    app.post("/executive", upload.single("image"), async (req, res) => {
-      try {
-        const { name, department, segment, year, term } = req.body;
-        const image = req.file ? req.file.path : null;
-
-        if (!image) {
-          return res.status(400).json({ message: "Image is required" });
-        }
-
-        const executive = { name, department, segment, year, term, image };
-        const result = await executiveCollection.insertOne(executive);
-
-        if (result.insertedId) {
-          res.status(201).json({
-            message: "executive added successfully",
-            executiveId: result.insertedId,
-          });
-        } else {
-          res.status(500).json({ message: "Failed to add executive" });
-        }
-      } catch (error) {
-        console.error("Error adding executive:", error);
-        res
-          .status(500)
-          .json({ message: "An error occurred while adding executive" });
-      }
     });
 
     // Delete a director
@@ -285,6 +258,64 @@ async function run() {
       } catch (error) {
         console.error("Error deleting director:", error);
         res.status(500).json({ message: "Failed to delete director" });
+      }
+    });
+
+    // Add a new executive
+    app.post("/executive", upload.single("image"), async (req, res) => {
+      try {
+        const { name, department, segment, year, term } = req.body;
+        const image = req.file ? req.file.path : null;
+
+        if (!image) {
+          return res.status(400).json({ message: "Image is required" });
+        }
+
+        const executive = { name, department, segment, year, term, image };
+        const result = await executiveCollection.insertOne(executive);
+
+        if (result.insertedId) {
+          res.status(201).json({
+            message: "executive added successfully",
+            executiveId: result.insertedId,
+          });
+        } else {
+          res.status(500).json({ message: "Failed to add executive" });
+        }
+      } catch (error) {
+        console.error("Error adding executive:", error);
+        res
+          .status(500)
+          .json({ message: "An error occurred while adding executive" });
+      }
+    });
+
+    // Add a new associative
+    app.post("/associative", upload.single("image"), async (req, res) => {
+      try {
+        const { name, department, segment, year, term } = req.body;
+        const image = req.file ? req.file.path : null;
+
+        if (!image) {
+          return res.status(400).json({ message: "Image is required" });
+        }
+
+        const associative = { name, department, segment, year, term, image };
+        const result = await associativeCollection.insertOne(associative);
+
+        if (result.insertedId) {
+          res.status(201).json({
+            message: "associative added successfully",
+            associativeId: result.insertedId,
+          });
+        } else {
+          res.status(500).json({ message: "Failed to add associative" });
+        }
+      } catch (error) {
+        console.error("Error adding associative:", error);
+        res
+          .status(500)
+          .json({ message: "An error occurred while adding associative" });
       }
     });
 
