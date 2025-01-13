@@ -201,6 +201,7 @@ async function run() {
           .json({ message: "An error occurred while adding director" });
       }
     });
+
     // Add a new director
     app.post("/director", upload.single("image"), async (req, res) => {
       try {
@@ -290,6 +291,17 @@ async function run() {
       }
     });
 
+    // Fetch all executive
+    app.get("/executives", async (req, res) => {
+      try {
+        const executives = await executiveCollection.find({}).toArray();
+        res.json(executives);
+      } catch (error) {
+        console.error("Error fetching executives:", error);
+        res.status(500).json({ message: "Failed to fetch executives" });
+      }
+    });
+
     // Add a new associative
     app.post("/associative", upload.single("image"), async (req, res) => {
       try {
@@ -316,6 +328,17 @@ async function run() {
         res
           .status(500)
           .json({ message: "An error occurred while adding associative" });
+      }
+    });
+
+    // Fetch all associative
+    app.get("/associatives", async (req, res) => {
+      try {
+        const associatives = await associativeCollection.find({}).toArray();
+        res.json(associatives);
+      } catch (error) {
+        console.error("Error fetching associatives:", error);
+        res.status(500).json({ message: "Failed to fetch associatives" });
       }
     });
 
