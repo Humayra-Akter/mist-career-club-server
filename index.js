@@ -202,35 +202,6 @@ async function run() {
       }
     });
 
-    // Add a new director
-    app.post("/director", upload.single("image"), async (req, res) => {
-      try {
-        const { name, department, segment, year, term } = req.body;
-        const image = req.file ? req.file.path : null;
-
-        if (!image) {
-          return res.status(400).json({ message: "Image is required" });
-        }
-
-        const director = { name, department, segment, year, term, image };
-        const result = await directorCollection.insertOne(director);
-
-        if (result.insertedId) {
-          res.status(201).json({
-            message: "Director added successfully",
-            directorId: result.insertedId,
-          });
-        } else {
-          res.status(500).json({ message: "Failed to add director" });
-        }
-      } catch (error) {
-        console.error("Error adding director:", error);
-        res
-          .status(500)
-          .json({ message: "An error occurred while adding director" });
-      }
-    });
-
     // Delete a director
     app.delete("/director/:id", async (req, res) => {
       try {
