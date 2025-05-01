@@ -39,15 +39,10 @@ async function run() {
     await client.connect();
     console.log("Connected to MongoDB");
     const eventCollection = client.db("mist-career-club").collection("event");
-    const associativeCollection = client
+    const panelCollection = client.db("mist-career-club").collection("panel");
+    const partnerCollection = client
       .db("mist-career-club")
-      .collection("associative");
-    const executiveCollection = client
-      .db("mist-career-club")
-      .collection("executive");
-    const directorCollection = client
-      .db("mist-career-club")
-      .collection("director");
+      .collection("partner");
 
     // Fetch all events
     app.get("/event", async (req, res) => {
@@ -60,87 +55,130 @@ async function run() {
       }
     });
 
-    // Create a new event with multiple images
-    app.post("/event", upload.array("images", 10), async (req, res) => {
-      try {
-        const { title, date, description } = req.body;
-        const images = req.files.map((file) => file.path); // Array of image URLs
+    // Post Event
+    app.post(
+      "/event",
+      upload.fields([
+        { name: "mainImage", maxCount: 1 },
+        { name: "images", maxCount: 100 },
+      ]),
+      async (req, res) => {
+        try {
+          const { title, date, description } = req.body;
+          const mainImage = req.files["mainImage"]
+            ? req.files["mainImage"][0].path
+            : null; // Handle main image separately
+          const images = req.files["images"]
+            ? req.files["images"].map((file) => file.path)
+            : []; // Handle multiple images
 
-        const event = { title, date, description, images };
-        const result = await eventCollection.insertOne(event);
+          const event = { title, date, description, mainImage, images };
+          const result = await eventCollection.insertOne(event);
 
-        if (result.insertedId) {
-          res.status(201).json({
-            message: "Event added successfully",
-            eventId: result.insertedId,
+          if (result?.insertedId) {
+            res.status(201).json({
+              message: "Event added successfully",
+              eventId: result.insertedId,
+            });
+          } else {
+            res.status(500).json({ message: "Failed to add event" });
+          }
+        } catch (error) {
+          console.error("Error creating event:", error);
+          res
+            .status(500)
+            .json({ message: "An error occurred while creating the event" });
+        }
+      }
+    );
+
+   // Update an Event
+    app.put(
+      "/event/:id",
+      upload.fields([
+        { name: "mainImage", maxCount: 1 },
+        { name: "images", maxCount: 100 },
+      ]),
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+          const { title, date, description, existingImages } = req.body;
+
+          // Parse existing images if provided as a JSON string
+          const existingImagesArray = existingImages
+            ? JSON.parse(existingImages)
+            : [];
+
+          // Fetch the event from the database
+          const event = await eventCollection.findOne({
+            _id: new ObjectId(id),
           });
-        } else {
-          res.status(500).json({ message: "Failed to add event" });
-        }
-      } catch (error) {
-        console.error("Error creating event:", error);
-        res
-          .status(500)
-          .json({ message: "An error occurred while creating the event" });
-      }
-    });
+          if (!event) {
+            return res.status(404).json({ message: "Event not found" });
+          }
 
-    app.put("/event/:id", upload.array("images", 10), async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { title, date, description, existingImages } = req.body;
+          // Handle mainImage update
+          let updatedMainImage = event.mainImage;
+          if (req.files["mainImage"]) {
+            const newMainImage = req.files["mainImage"][0].path;
 
-        // Parse the existing images (if provided as a JSON string)
-        const existingImagesArray = existingImages
-          ? JSON.parse(existingImages)
-          : [];
+            // Delete old mainImage from Cloudinary
+            if (event.mainImage) {
+              const publicId = event.mainImage.split("/").pop().split(".")[0];
+              await cloudinary.uploader.destroy(
+                `mist-career-club/events/${publicId}`
+              );
+            }
 
-        // Collect new image URLs (if any)
-        const newImages = req.files ? req.files.map((file) => file.path) : [];
+            updatedMainImage = newMainImage;
+          }
 
-        // Identify images to delete
-        const event = await eventCollection.findOne({ _id: new ObjectId(id) });
-        if (!event) {
-          return res.status(404).json({ message: "Event not found" });
-        }
+          // Handle additional images update
+          const newImages = req.files["images"]
+            ? req.files["images"].map((file) => file.path)
+            : [];
 
-        const imagesToDelete = event.images.filter(
-          (img) => !existingImagesArray.includes(img)
-        );
-
-        // Remove images from Cloudinary
-        for (const image of imagesToDelete) {
-          const publicId = image.split("/").pop().split(".")[0]; // Extract Cloudinary public ID
-          await cloudinary.uploader.destroy(
-            `mist-career-club/events/${publicId}`
+          // Identify images to delete
+          const imagesToDelete = event.images.filter(
+            (img) => !existingImagesArray.includes(img)
           );
+
+          // Remove old images from Cloudinary
+          for (const image of imagesToDelete) {
+            const publicId = image.split("/").pop().split(".")[0];
+            await cloudinary.uploader.destroy(
+              `mist-career-club/events/${publicId}`
+            );
+          }
+
+          // Combine existing and new images
+          const updatedImages = [...existingImagesArray, ...newImages];
+
+          // Prepare update object
+          const updateFields = {
+            title,
+            date,
+            description,
+            mainImage: updatedMainImage,
+            images: updatedImages,
+          };
+
+          const result = await eventCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updateFields }
+          );
+
+          if (result.matchedCount > 0) {
+            res.json({ message: "Event updated successfully" });
+          } else {
+            res.status(404).json({ message: "Event not found" });
+          }
+        } catch (error) {
+          console.error("Error updating event:", error);
+          res.status(500).json({ message: "Failed to update event" });
         }
-
-        // Combine existing and new images
-        const updatedImages = [...existingImagesArray, ...newImages];
-
-        const updateFields = {
-          title,
-          date,
-          description,
-          images: updatedImages,
-        };
-
-        const result = await eventCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $set: updateFields }
-        );
-
-        if (result.matchedCount > 0) {
-          res.json({ message: "Event updated successfully" });
-        } else {
-          res.status(404).json({ message: "Event not found" });
-        }
-      } catch (error) {
-        console.error("Error updating event:", error);
-        res.status(500).json({ message: "Failed to update event" });
       }
-    });
+    );
 
     // Delete an event by ID
     app.delete("/event/:id", async (req, res) => {
@@ -162,154 +200,109 @@ async function run() {
       }
     });
 
-    // Fetch all directors
-    app.get("/director", async (req, res) => {
+    // Post panel
+    app.post("/panel", upload.array("images", 9), async (req, res) => {
       try {
-        const directors = await directorCollection.find({}).toArray();
-        res.json(directors);
-      } catch (error) {
-        console.error("Error fetching directors:", error);
-        res.status(500).json({ message: "Failed to fetch directors" });
-      }
-    });
+        const panelData = JSON.parse(req.body.panel);
+        const images = req.files;
 
-    // Add a new director
-    app.post("/director", upload.single("image"), async (req, res) => {
-      try {
-        const { name, department, segment, year, term } = req.body;
-        const image = req.file ? req.file.path : null;
-
-        if (!image) {
-          return res.status(400).json({ message: "Image is required" });
+        if (!panelData || panelData.length !== 9) {
+          return res.status(400).json({ message: "All fields are required" });
         }
 
-        const director = { name, department, segment, year, term, image };
-        const result = await directorCollection.insertOne(director);
+        // Map data to store in DB
+        const panelMembers = panelData.map((member, index) => ({
+          name: member.name,
+          department: member.department,
+          segment: member.segment,
+          term: member.term,
+          year: member.year,
+          image: images[index] ? images[index].path : null,
+        }));
 
-        if (result.insertedId) {
+        // Insert into MongoDB
+        const result = await panelCollection.insertMany(panelMembers);
+
+        if (result.insertedCount > 0) {
           res.status(201).json({
-            message: "Director added successfully",
-            directorId: result.insertedId,
+            message: "Panel members added successfully",
+            panelIds: result.insertedIds,
           });
         } else {
-          res.status(500).json({ message: "Failed to add director" });
+          res.status(500).json({ message: "Failed to add panel members" });
         }
       } catch (error) {
-        console.error("Error adding director:", error);
+        console.error("Error adding panel members:", error);
         res
           .status(500)
-          .json({ message: "An error occurred while adding director" });
+          .json({ message: "An error occurred while adding panel members" });
       }
     });
 
-    // Delete a director
-    app.delete("/director/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
+    // Update panel
+    app.put(
+      "/panel/:id",
+      upload.fields([{ name: "image", maxCount: 1 }]), // Use maxCount: 1
+      async (req, res) => {
+        try {
+          const { id } = req.params;
+          const { name, department, segment } = req.body;
 
-        const director = await directorCollection.findOne({
-          _id: new ObjectId(id),
-        });
-        if (!director) {
-          return res.status(404).json({ message: "Director not found" });
-        }
-
-        // Remove image from Cloudinary
-        const publicId = director.image.split("/").pop().split(".")[0];
-        await cloudinary.uploader.destroy(publicId);
-
-        const result = await directorCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-
-        if (result.deletedCount > 0) {
-          res.json({ message: "Director deleted successfully" });
-        } else {
-          res.status(404).json({ message: "Director not found" });
-        }
-      } catch (error) {
-        console.error("Error deleting director:", error);
-        res.status(500).json({ message: "Failed to delete director" });
-      }
-    });
-
-    // Add a new executive
-    app.post("/executive", upload.single("image"), async (req, res) => {
-      try {
-        const { name, department, segment, year, term } = req.body;
-        const image = req.file ? req.file.path : null;
-
-        if (!image) {
-          return res.status(400).json({ message: "Image is required" });
-        }
-
-        const executive = { name, department, segment, year, term, image };
-        const result = await executiveCollection.insertOne(executive);
-
-        if (result.insertedId) {
-          res.status(201).json({
-            message: "executive added successfully",
-            executiveId: result.insertedId,
+          const panelMember = await panelCollection.findOne({
+            _id: new ObjectId(id),
           });
-        } else {
-          res.status(500).json({ message: "Failed to add executive" });
+
+          if (!panelMember) {
+            return res.status(404).json({ message: "Panel member not found" });
+          }
+
+          let updatedImage = panelMember.image;
+          if (req.files["image"] && req.files["image"][0]) {
+            const newImage = req.files["image"][0].path;
+
+            // Delete old image
+            if (panelMember.image) {
+              const publicId = panelMember.image.split("/").pop().split(".")[0];
+              await cloudinary.uploader.destroy(
+                `mist-career-club/panel/${publicId}`
+              );
+            }
+
+            updatedImage = newImage;
+          }
+
+          const updateFields = {
+            name,
+            department,
+            segment,
+            image: updatedImage,
+          };
+
+          const result = await panelCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updateFields }
+          );
+
+          if (result.matchedCount > 0) {
+            res.json({ message: "Panel member updated successfully" });
+          } else {
+            res.status(404).json({ message: "Panel member not found" });
+          }
+        } catch (error) {
+          console.error("Error updating panel member:", error);
+          res.status(500).json({ message: "Failed to update panel member" });
         }
-      } catch (error) {
-        console.error("Error adding executive:", error);
-        res
-          .status(500)
-          .json({ message: "An error occurred while adding executive" });
       }
-    });
+    );
 
-    // Fetch all executive
-    app.get("/executives", async (req, res) => {
+    // Fetch all panel
+    app.get("/panel", async (req, res) => {
       try {
-        const executives = await executiveCollection.find({}).toArray();
-        res.json(executives);
+        const events = await panelCollection.find({}).toArray();
+        res.json(events);
       } catch (error) {
-        console.error("Error fetching executives:", error);
-        res.status(500).json({ message: "Failed to fetch executives" });
-      }
-    });
-
-    // Add a new associative
-    app.post("/associative", upload.single("image"), async (req, res) => {
-      try {
-        const { name, department, segment, year, term } = req.body;
-        const image = req.file ? req.file.path : null;
-
-        if (!image) {
-          return res.status(400).json({ message: "Image is required" });
-        }
-
-        const associative = { name, department, segment, year, term, image };
-        const result = await associativeCollection.insertOne(associative);
-
-        if (result.insertedId) {
-          res.status(201).json({
-            message: "associative added successfully",
-            associativeId: result.insertedId,
-          });
-        } else {
-          res.status(500).json({ message: "Failed to add associative" });
-        }
-      } catch (error) {
-        console.error("Error adding associative:", error);
-        res
-          .status(500)
-          .json({ message: "An error occurred while adding associative" });
-      }
-    });
-
-    // Fetch all associative
-    app.get("/associatives", async (req, res) => {
-      try {
-        const associatives = await associativeCollection.find({}).toArray();
-        res.json(associatives);
-      } catch (error) {
-        console.error("Error fetching associatives:", error);
-        res.status(500).json({ message: "Failed to fetch associatives" });
+        console.error("Error fetching events:", error);
+        res.status(500).json({ message: "Failed to fetch events" });
       }
     });
 
