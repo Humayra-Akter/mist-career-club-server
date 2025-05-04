@@ -92,7 +92,7 @@ async function run() {
       }
     );
 
-   // Update an Event
+    // Update an Event
     app.put(
       "/event/:id",
       upload.fields([
@@ -305,6 +305,127 @@ async function run() {
         res.status(500).json({ message: "Failed to fetch events" });
       }
     });
+
+    // Fetch all Partners
+    app.post("/partner", upload.single("image"), async (req, res) => {
+      try {
+        const { name, details } = req.body;
+        const imagePath = req.file?.path || "";
+
+        const partner = {
+          name,
+          details,
+          image: imagePath,
+        };
+
+        const result = await partnerCollection.insertOne(partner);
+        if (result.insertedCount === 1 || result.acknowledged) {
+          res.status(201).json({ message: "Partner added successfully" });
+        } else {
+          res.status(500).json({ message: "Failed to add partner" });
+        }
+      } catch (error) {
+        console.error("Error adding partner:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    //partner get
+    app.get("/partner", async (req, res) => {
+      const query = {};
+      const cursor = partnerCollection.find(query);
+      const partner = await cursor.toArray();
+      res.send(partner);
+    });
+
+    app.put("/partner/:id", upload.single("image"), async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { name, details } = req.body;
+
+        const existingPartner = await partnerCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!existingPartner) {
+          return res.status(404).json({ message: "Partner not found" });
+        }
+
+        let updatedImage = existingPartner.image;
+
+        if (req.file) {
+          const newImage = req.file.path;
+
+          // Delete old image from Cloudinary
+          if (existingPartner.image) {
+            const publicId = existingPartner.image
+              .split("/")
+              .pop()
+              .split(".")[0];
+            await cloudinary.uploader.destroy(
+              `mist-career-club/partners/${publicId}`
+            );
+          }
+
+          updatedImage = newImage;
+        }
+
+        const updatedFields = {
+          name,
+          details,
+          image: updatedImage,
+        };
+
+        const result = await partnerCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updatedFields }
+        );
+
+        if (result.matchedCount > 0) {
+          res.json({ message: "Partner updated successfully" });
+        } else {
+          res.status(404).json({ message: "Partner not found" });
+        }
+      } catch (error) {
+        console.error("Error updating partner:", error);
+        res.status(500).json({ message: "Failed to update partner" });
+      }
+    });
+
+    app.delete("/partner/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        const partner = await partnerCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!partner) {
+          return res.status(404).json({ message: "Partner not found" });
+        }
+
+        // Delete image from Cloudinary
+        if (partner.image) {
+          const publicId = partner.image.split("/").pop().split(".")[0];
+          await cloudinary.uploader.destroy(
+            `mist-career-club/partners/${publicId}`
+          );
+        }
+
+        const result = await partnerCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount > 0) {
+          res.json({ message: "Partner deleted successfully" });
+        } else {
+          res.status(404).json({ message: "Partner not found" });
+        }
+      } catch (error) {
+        console.error("Error deleting partner:", error);
+        res.status(500).json({ message: "Failed to delete partner" });
+      }
+    });
+
 
     // Root route
     app.get("/", (req, res) => {
